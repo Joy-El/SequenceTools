@@ -109,18 +109,18 @@ def parse_alignment(sam_line):
         mapped = False
         mismatch_count = None
         position_string = None
+        strand = None
     else:
         mapped = True
+        strand = "+"  # default value
         if (int(parts[1]) & 0x10) == 0x10:
             # aligned in the antisense direction
             strand = "-"
             tag_sequence = reverse_complement(tag_sequence)
-        else:
-            strand = "+"
         mismatch_count = get_mismatches(parts[11:])
         start = int(parts[3]) - 1  # to make it 0-based
         end = start + len(tag_sequence)  # 1-based
-        position_string = "{}\t{}\t{}\t{}".format(parts[2], start, end)
+        position_string = "{}\t{}\t{}".format(parts[2], start, end)
     return (name, mapped, mismatch_count, tag_sequence, position_string, strand)
 
 
@@ -177,6 +177,12 @@ def create_alignment_db(sam_openfile, library_name, database_prefix):
                 last_tag = tag
                 mismatch_tally = [0, 0, 0]
                 mismatch_tally[mismatches] += 1
+    # write out last tag
+    write_data("{}\t1".format(last_tag), "{}.data".format(library))
+    # prepare output for tags database
+    mismatch_string = "\t".join(str(m) for m in mismatch_tally)
+    write_data("{}\t{}\t{}".format(last_tag, sum(mismatch_tally), mismatch_string),
+               "{}.data".format(tags))
 
 
 if __name__ == "__main__":
