@@ -99,7 +99,7 @@ def parse_alignment(sam_line):
         position as tab-delimited string of:
             chromosome
             start position (0-based)
-            end position (0-based)
+            end position (1-based) so the flat file is BED-like
             strand (+, -, or .)"""
     parts = sam_line.strip().split("\t")
     name = parts[0]
@@ -119,9 +119,9 @@ def parse_alignment(sam_line):
             strand = "+"
         mismatch_count = get_mismatches(parts[11:])
         start = int(parts[3]) - 1  # to make it 0-based
-        end = start + len(tag_sequence)
-        position_string = "{}\t{}\t{}\t{}".format(parts[2], start, end, strand)
-    return (name, mapped, mismatch_count, tag_sequence, position_string)
+        end = start + len(tag_sequence)  # 1-based
+        position_string = "{}\t{}\t{}\t{}".format(parts[2], start, end)
+    return (name, mapped, mismatch_count, tag_sequence, position_string, strand)
 
 
 def create_alignment_db(sam_openfile, library_name, database_prefix):
@@ -153,17 +153,17 @@ def create_alignment_db(sam_openfile, library_name, database_prefix):
 
     mismatch_tally = [0, 0, 0]
     # parse initial alignment
-    (read_name, maps, mismatches, tag, position) = parse_alignment(header.strip())
+    (read_name, maps, mismatches, tag, position, strand) = parse_alignment(header.strip())
     if maps:
-        write_data("{}\t{}\t{}".format(position, tag, mismatches), "{}.data".format(tagloci))
+        write_data("{}\t{}\t{}".format(position, tag, mismatches, strand), "{}.data".format(tagloci))
         mismatch_tally[mismatches] += 1
     last_read_name = read_name
     last_tag = tag
 
     for alignment in read_chunk(sam_openfile, CHUNK):
-        (read_name, maps, mismatches, tag, position) = parse_alignment(alignment)
+        (read_name, maps, mismatches, tag, position, strand) = parse_alignment(alignment)
         if maps:  # don't process unmapped reads
-            write_data("{}\t{}\t{}".format(position, tag, mismatches), "{}.data".format(tagloci))
+            write_data("{}\t{}\t{}".format(position, tag, mismatches, strand), "{}.data".format(tagloci))
             if read_name == last_read_name:
                 mismatch_tally[mismatches] += 1
             else:
