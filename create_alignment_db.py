@@ -1,4 +1,4 @@
-__author__ = 'Joy-El R.B. Talbot'
+#!/usr/bin/python
 """create_alignment_db.py creates a set of SQLite3 databases from
 an alignment file (currently Bowtie output in SAM format)
 Copyright (C) 2014 Joy-El R.B. Talbot
@@ -17,16 +17,18 @@ Copyright (C) 2014 Joy-El R.B. Talbot
     along with this program (LICENSE).
     If not, see <http://www.gnu.org/licenses/>"""
 
+__author__ = 'Joy-El R.B. Talbot'
+
 from commonIO import read_chunk
 from commonIO import CustomParser
-from datetime import datetime
+import datetime
 import sys
 import re
 
 CHUNK = 4096  # bytes of input read per IO call with read_chunk
 
 def get_commandline_args():
-    """Command-line interface for creater_alignment_db.py"""
+    """Command-line interface for create_alignment_db.py"""
     parser = CustomParser(
         description='''create_alignment_db.py creates a set of SQLite3 databases from
 an alignment file (currently Bowtie output in SAM format)
@@ -76,6 +78,16 @@ def get_mismatches(flags):
             return len(re.split("[ATCGNatcgn]+", MD_flag))-1
 
 
+def reverse_complement(sequence):
+    """Return the reverse complement of a DNA sequence"""
+    complement = {"A":"T", "T":"A", "G":"C", "C":"G", "N":"N",
+                  "a":"T", "t":"A", "g":"C", "c":"G", "n":"N"}  # to account for case
+    # creates the complement as a list
+    complement_sequence = map(lambda x: complement[x], sequence)
+    # reverse and return to a string
+    return "".join(complement_sequence[::-1])
+
+
 def parse_alignment(sam_line):
     """Parse the information in a SAM formatted alignment.
 
@@ -102,6 +114,7 @@ def parse_alignment(sam_line):
         if (int(parts[1]) & 0x10) == 0x10:
             # aligned in the antisense direction
             strand = "-"
+            tag_sequence = reverse_complement(tag_sequence)
         else:
             strand = "+"
         mismatch_count = get_mismatches(parts[11:])
@@ -142,28 +155,27 @@ def create_alignment_db(sam_openfile, library_name, database_prefix):
     # parse initial alignment
     (read_name, maps, mismatches, tag, position) = parse_alignment(header.strip())
     if maps:
-        write_data("{}\t1".format(tag), "{}.data".format(library))
         write_data("{}\t{}\t{}".format(position, tag, mismatches), "{}.data".format(tagloci))
         mismatch_tally[mismatches] += 1
     last_read_name = read_name
+    last_tag = tag
 
     for alignment in read_chunk(sam_openfile, CHUNK):
         (read_name, maps, mismatches, tag, position) = parse_alignment(alignment)
-        if maps:
-            write_data("{}\t1".format(tag), "{}.data".format(library))
+        if maps:  # don't process unmapped reads
             write_data("{}\t{}\t{}".format(position, tag, mismatches), "{}.data".format(tagloci))
-
-        if read_name == last_read_name:
-            mismatch_tally[mismatches] += 1
-        else:
-            # prepare output for tags database
-            mismatch_string = "\t".join(str(m) for m in mismatch_tally)
-            write_data("{}\t{}\t{}".format(tag, sum(mismatch_tally), mismatch_string),
-                       "{}.data".format(tags))
-            # reset for next round
-            last_read_name = read_name
-            mismatch_tally = [0, 0, 0]
-            if maps:
+            if read_name == last_read_name:
+                mismatch_tally[mismatches] += 1
+            else:
+                write_data("{}\t1".format(last_tag), "{}.data".format(library))
+                # prepare output for tags database
+                mismatch_string = "\t".join(str(m) for m in mismatch_tally)
+                write_data("{}\t{}\t{}".format(last_tag, sum(mismatch_tally), mismatch_string),
+                           "{}.data".format(tags))
+                # reset for next round
+                last_read_name = read_name
+                last_tag = tag
+                mismatch_tally = [0, 0, 0]
                 mismatch_tally[mismatches] += 1
 
 
