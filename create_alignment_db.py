@@ -155,7 +155,7 @@ def create_alignment_db(sam_openfile, library_name, database_prefix):
     # parse initial alignment
     (read_name, maps, mismatches, tag, position, strand) = parse_alignment(header.strip())
     if maps:
-        write_data("{}\t{}\t{}".format(position, tag, mismatches, strand), "{}.data".format(tagloci))
+        write_data("{}\t{}\t{}\t{}".format(position, tag, mismatches, strand), "{}.data".format(tagloci))
         mismatch_tally[mismatches] += 1
     last_read_name = read_name
     last_tag = tag
@@ -163,7 +163,7 @@ def create_alignment_db(sam_openfile, library_name, database_prefix):
     for alignment in read_chunk(sam_openfile, CHUNK):
         (read_name, maps, mismatches, tag, position, strand) = parse_alignment(alignment)
         if maps:  # don't process unmapped reads
-            write_data("{}\t{}\t{}".format(position, tag, mismatches, strand), "{}.data".format(tagloci))
+            write_data("{}\t{}\t{}\t{}".format(position, tag, mismatches, strand), "{}.data".format(tagloci))
             if read_name == last_read_name:
                 mismatch_tally[mismatches] += 1
             else:
