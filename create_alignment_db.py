@@ -19,6 +19,164 @@ Copyright (C) 2014 Joy-El R.B. Talbot
 
 from commonIO import read_chunk
 from commonIO import CustomParser
-from parse_bowtie_output import add_multimapping_tally
+from datetime import datetime
+import sys
+import re
+
+CHUNK = 4096  # bytes of input read per IO call with read_chunk
+
+def get_commandline_args():
+    """Command-line interface for creater_alignment_db.py"""
+    parser = CustomParser(
+        description='''create_alignment_db.py creates a set of SQLite3 databases from
+an alignment file (currently Bowtie output in SAM format)
+
+Copyright (C) 2014 Joy-El R.B. Talbot under the GNU General Public License version 3''')
+
+    parser.add_argument("-i", "--input",
+                        help="bowtie file (SAM format), omit to read from commandline",
+                        metavar="SAM")
+    parser.add_argument("-l", "--library_name",
+                        help="Name of library",
+                        metavar="NAME",
+                        type=str,
+                        required=True)
+    parser.add_argument("-d", "--database_prefix",
+                        help="Prefix for database names; default: current datetime as YMD-HMS",
+                        metavar="NAME",
+                        type=str,
+                        default=datetime.datetime.now().strftime('%y%m%d-%H%M%S'))
+    arguments = parser.parse_args()
+
+    if arguments.input is None:
+        use_stdin = True
+        sys.stderr.write("Reading input from STDIN...\n")
+        sys.stderr.flush()
+    else:
+        use_stdin = False
+
+    return (arguments, use_stdin)
 
 
+def write_data(string, filename):
+    """Write string to file."""
+    with open(filename, "a") as output:
+        output.write(string + "\n")
+    return True
+
+
+def get_mismatches(flags):
+    """Return number of mismatches from MD flag. See SAM format for details."""
+    for flag in flags:
+        try:
+            MD_flag = re.search("MD:Z:([ATCGNatcgn0-9]+)", flag).groups()[0]
+        except AttributeError:
+            next
+        else:
+            return len(re.split("[ATCGNatcgn]+", MD_flag))-1
+
+
+def parse_alignment(sam_line):
+    """Parse the information in a SAM formatted alignment.
+
+    Returns a tuple of:
+        name as string,
+        mapped as boolean,
+        mismatch_count as int,
+        tag as string (sequence),
+        position as tab-delimited string of:
+            chromosome
+            start position (0-based)
+            end position (0-based)
+            strand (+, -, or .)"""
+    parts = sam_line.strip().split("\t")
+    name = parts[0]
+    tag_sequence = parts[9]
+    if (int(parts[1]) & 0x4) == 0x4:
+        # read did not map, can not get info fro mismatch_count or position_string
+        mapped = False
+        mismatch_count = None
+        position_string = None
+    else:
+        mapped = True
+        if (int(parts[1]) & 0x10) == 0x10:
+            # aligned in the antisense direction
+            strand = "-"
+        else:
+            strand = "+"
+        mismatch_count = get_mismatches(parts[11:])
+        start = int(parts[3]) - 1  # to make it 0-based
+        end = start + len(tag_sequence)
+        position_string = "{}\t{}\t{}\t{}".format(parts[2], start, end, strand)
+    return (name, mapped, mismatch_count, tag_sequence, position_string)
+
+
+def create_alignment_db(sam_openfile, library_name, database_prefix):
+    """Create alignment SQLite3 databases representing alignment data from Bowtie SAM file.
+
+    Database files:
+        {prefix}_tagloci.db: partition on (p) Chromosome,
+                             index and partition on (ip) Start(0-based),
+                             End (0-based),
+                             Strand (+,-,or .),
+                             Tag Sequence,
+                             Number of Mismatches
+        {prefix}_{library}.db: (ip) Tag Sequence,
+                                Abundance
+        {prefix}_tags.db: (ip) Tag Sequence,
+                          Total Mappings,
+                          Mappings with 0 mismatches (perfect),
+                          Mappings with 1 mismatch,
+                          Mappings with 2 mismatches"""
+    #TODO create_chromosome_db(sam_openfile, database_prefix)
+    tagloci = "{}_tagloci".format(database_prefix)
+    library = "{}_{}".format(database_prefix, library_name)
+    tags = "{}_tags".format(database_prefix)
+
+    # scan through header lines
+    header = sam_openfile.readline()
+    while header[0] == "@":
+        header = sam_openfile.readline()
+
+    mismatch_tally = [0, 0, 0]
+    # parse initial alignment
+    (read_name, maps, mismatches, tag, position) = parse_alignment(header.strip())
+    if maps:
+        write_data("{}\t1".format(tag), "{}.data".format(library))
+        write_data("{}\t{}\t{}".format(position, tag, mismatches), "{}.data".format(tagloci))
+        mismatch_tally[mismatches] += 1
+    last_read_name = read_name
+
+    for alignment in read_chunk(sam_openfile, CHUNK):
+        (read_name, maps, mismatches, tag, position) = parse_alignment(alignment)
+        if maps:
+            write_data("{}\t1".format(tag), "{}.data".format(library))
+            write_data("{}\t{}\t{}".format(position, tag, mismatches), "{}.data".format(tagloci))
+
+        if read_name == last_read_name:
+            mismatch_tally[mismatches] += 1
+        else:
+            # prepare output for tags database
+            mismatch_string = "\t".join(str(m) for m in mismatch_tally)
+            write_data("{}\t{}\t{}".format(tag, sum(mismatch_tally), mismatch_string),
+                       "{}.data".format(tags))
+            # reset for next round
+            last_read_name = read_name
+            mismatch_tally = [0, 0, 0]
+            if maps:
+                mismatch_tally[mismatches] += 1
+
+
+if __name__ == "__main__":
+    (args, input_from_stdin) = get_commandline_args()
+    try:
+        if input_from_stdin:
+            in_file = sys.stdin
+            create_alignment_db(in_file, args.library_name, args.database_prefix)
+        else:
+            with open(args.input) as in_file:
+                create_alignment_db(in_file, args.library_name, args.database_prefix)
+    except IOError as error:
+        sys.stderr.write("Could not open file: {}\n".format(error.filename))
+        sys.stderr.flush()
+        raise IOError(error)
