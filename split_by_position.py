@@ -21,6 +21,8 @@ __author__ = 'Joy-El R.B. Talbot'
 from commonIO import read_chunk
 import sys
 
+##TODO speed this up or implement a bash pipeline. Right now it is WAY too slow...
+
 CHUNK = 4096  # bytes of input read per IO call with read_chunk
 SPLIT = 10000000  # bases per unit
 
