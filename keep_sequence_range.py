@@ -80,6 +80,7 @@ def keep_sequence_range(open_fastq_file, minimum_size, maximum_size, chunk_size)
                 yield output_chunks
                 output_chunks = ""
                 kept_reads = 0
+    yield output_chunks
 
 
 if __name__=="__main__":
@@ -89,17 +90,17 @@ if __name__=="__main__":
             in_file = sys.stdin
             for group in keep_sequence_range(in_file, args.minimum, args.maximum, CHUNK):
                 if output_to_stdout:
-                    print group
+                    print group.strip()
                 else:
-                    with open(args.output, 'w') as output:
+                    with open(args.output, 'a') as output:
                         output.write(group)
         else:
             with open(args.input) as in_file:
                 for group in keep_sequence_range(in_file, args.minimum, args.maximum, CHUNK):
                     if output_to_stdout:
-                        print group
+                        print group.strip()
                     else:
-                        with open(args.output, 'w') as output:
+                        with open(args.output, 'a') as output:
                             output.write(group)
     except IOError as error:
         sys.stderr.write("Could not open file: {}\n".format(error.filename))
