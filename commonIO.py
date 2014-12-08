@@ -19,6 +19,21 @@ def read_chunk(open_file_object, chunk_size=1048):
         chunk = chunk_list[-1] + open_file_object.read(chunk_size)
 
 
+def read_fastq_chunk(fastq_file, chunk_size=1048):
+    """Return a tuple representing a fastq read
+
+    DOES NOT WORK WITH MULTI-LINE SEQUENCE FASTQ FILES!!"""
+    ##TODO handle comment lines
+    ##TODO handle multi-line DNA sequence
+    read = []
+    for line in read_chunk(fastq_file, chunk_size):
+        read.append(line)
+        if len(read) > 4:
+            yield read[0:4]
+            read = read[4:]
+    yield read[0:4]
+
+
 class CustomParser(argparse.ArgumentParser):
     """Custom command line argument parser inheriting from argparse.
 
