@@ -43,11 +43,13 @@ Copyright (C) 2014 Joy-El R.B. Talbot under the GNU General Public License versi
     parser.add_argument("--minimum",
                         help="minimum length to keep, default = 16",
                         metavar="NT",
-                        type=int)
+                        type=int,
+			default=16)
     parser.add_argument("--maximum",
                         help="maximum length to keep, default = 35",
                         metavar="NT",
-                        type=int)
+                        type=int,
+			default=35)
     arguments = parser.parse_args()
 
     if arguments.input is None:
