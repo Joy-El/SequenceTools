@@ -27,6 +27,7 @@ import re
 
 CHUNK = 4096  # bytes of input read per IO call with read_chunk
 
+
 def get_commandline_args():
     """Command-line interface for create_alignment_db.py"""
     parser = CustomParser(
